@@ -7,6 +7,7 @@ import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.auth.jwt.JWTAuth;
 import io.vertx.ext.mongo.MongoClient;
 
 public class PersistenceVerticle extends AbstractVerticle{
@@ -31,6 +32,8 @@ public class PersistenceVerticle extends AbstractVerticle{
       switch (action) {
         case "register.student": registerStudent(message);
           break;
+        case "login.student": loginStudent(message);
+          break;
         case "lookUpById.student": getStudentById(message);
           break;
         case "deleteById.student": deleteStudentById(message);
@@ -54,6 +57,30 @@ public class PersistenceVerticle extends AbstractVerticle{
         message.reply(new JsonObject().put("registeredStudent", studentToRegister.toMongoJson()));
       }else{
         message.fail(MessagingErrorCodes.INSERT_FAILURE.ordinal(), MessagingErrorCodes.INSERT_FAILURE.message + ar.cause().getMessage());
+      }
+    });
+  }
+
+  private void loginStudent(Message<JsonObject> message) {
+
+    final LoginDetails loginDetails = new LoginDetails(message.body().getJsonObject("login"));
+
+    JsonObject query = new JsonObject().put("studentId", loginDetails.getStudentId());
+
+    mongoClient.find("student", query, res -> {
+      if (res.succeeded()) {
+        if(res.result().size() == 0){
+          message.fail(MessagingErrorCodes.NOT_FOUND.ordinal(), MessagingErrorCodes.NOT_FOUND.message + "Student not found");
+        }else{
+          Student student = new Student(res.result().get(0));
+          if (loginDetails.getStudentId().equals(student.getStudentId()) && loginDetails.getPassword().equals(student.getPassword())){
+            message.reply(new JsonObject().put("loggedStudent", student.toMongoJson()));
+          }else{
+            message.fail(MessagingErrorCodes.AUTHENTICATION_FAILED.ordinal(), MessagingErrorCodes.AUTHENTICATION_FAILED.message + "Wrong Password");
+          }
+        }
+      } else {
+        message.fail(MessagingErrorCodes.AUTHENTICATION_FAILED.ordinal(), MessagingErrorCodes.AUTHENTICATION_FAILED.message + res.cause());
       }
     });
   }
